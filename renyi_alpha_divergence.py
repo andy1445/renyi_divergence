@@ -1,19 +1,30 @@
-import numpy as np
-import scipy.spatial
-from scipy.special import gamma
-
-def renyi_alpha_divergence(X, Y, k=3, alpha=0.8):
-    n = len(X)
-    m = len(Y)
-    distance_X  = scipy.spatial.distance.cdist(X, X) # n by n distance matrix (euclidean)
-    distance_XY = scipy.spatial.distance.cdist(X, Y) # n by m distance matrix (euclidean)
-    # the Euclidean distance of the kth nearest neighbor of X_i in the sample X_1:n
-    rho_k = np.sort(distance_X, axis=1)[:, k]
-    # the Euclidean distance of the kth nearest neighbor of X_i in the sample Y_1:m
-    nu_k  = np.sort(distance_XY, axis=1)[:, k]
-    B_k_alpha = gamma(k)**2/(gamma(k-alpha+1) * gamma(k+alpha-1))
-    D_hat = np.divide(rho_k, nu_k+1e-6) * (n-1) / m
-    D_hat = np.power(D_hat, 1-alpha)
-    D_hat = 1/n * np.sum(D_hat)
-    D_hat = D_hat * B_k_alpha
-    return D_hat
+def renyi_alpha_divergence(x, y, k=9, alpha=0.8):
+    """
+    Non-parametric estimator of Renyi alpha divergence proposed in
+    http://proceedings.mlr.press/v15/poczos11a/poczos11a.pdf
+    Inputs:
+    x,y:  ndarray of shape n,1 (It can be extended for more dimensions, but first double check paper)
+       alpha: scalar
+        k: number of neighbors
+    Output:
+        Renyi-alpha divergence
+    """
+    knn_x = NearestNeighbors(n_neighbors=k+1)
+    knn_x.fit(x)
+    knn_y = NearestNeighbors(n_neighbors=k)
+    knn_y.fit(y)
+    n = len(x)
+    m = len(y)
+    renyi_divergence = 0
+    for i in range(len(x)):
+        pk = knn_x.kneighbors(x[i].reshape(-1, x.shape[1]), return_distance=True)[0][0][k] # has itself in position 0
+        vk = knn_y.kneighbors(x[i].reshape(-1, x.shape[1]), return_distance=True)[0][0][k-1] # k-1 because it does not have itself in position 0
+        pk = pk ** x.shape[1]
+        vk = vk ** x.shape[1]
+#         value = ((n-1)*pk)/(m*vk + 1e-10)
+        value = ((n-1)*pk)/(m*vk) if m*vk != 0 else 0
+        renyi_divergence += value**(1-alpha)
+    bias = gamma(k)**2/(gamma(k-alpha+1)*gamma(k+alpha-1))
+    renyi_divergence = renyi_divergence*bias/n
+    renyi_divergence = np.log(renyi_divergence)/(alpha-1)
+    return renyi_divergence
